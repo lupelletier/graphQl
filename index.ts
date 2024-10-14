@@ -1,9 +1,12 @@
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
+import { PrismaClient } from '@prisma/client';
 
 // A schema is a collection of type definitions (hence "typeDefs")
 // that together define the "shape" of queries that are executed against
 // your data.
+
+const prisma = new PrismaClient();
 const typeDefs = `#graphql
   # Comments in GraphQL strings (such as this one) start with the hash (#) symbol.
 
@@ -51,91 +54,52 @@ const typeDefs = `#graphql
   }
 
 `;
-const books = [
-    {
-      id: 1,
-      title: 'The Awakening',
-      authorId: 1 ,
-      categoryId: 1,
-      publicationDate: '1899-04-22',
-    },
-    {
-      id: 2,
-      title: 'City of Glass',
-      authorId: 2,
-      categoryId: 1,
-      publicationDate: '1985-03-12',
-    },
-    {
-      id: 3,
-      title: 'The Awakening2',
-      authorId: 1,
-      categoryId: 2,
-      publicationDate: '1899-04-22',
-    },
-    {
-      id: 4,
-      title: 'City of Glass2',
-      authorId: 2,
-      categoryId: 2,
-      publicationDate: '1985-03-12',
-    }
-];
-
-const categories = [
-  {
-    id: 1,
-    name: 'Fiction',
-  },
-  {
-    id: 2,
-    name: 'Novel',
-  },
-];
-
-const authors = [
-  {
-    name: 'Kate Chopin',
-    id: 1,
-    books: [books[0], books[2]],
-  },
-  {
-    name: 'Paul Auster',
-    id: 2,
-    books: [books[1], books[3]],
-  },
-];
 
 // Resolvers define how to fetch the types defined in your schema.
 // This resolver retrieves books from the "books" array above.
 const resolvers = {
   Query: {
-    books: () => books,
-    authors: () => authors,
-    categories: () => categories,
-    book: (_: any, { id }: any) => books.find(book => book.id === id),
-    category:(_: any, { id }: any) => categories.find(category => category.id === id),
-    author:(_: any, { id }: any) => authors.find(author => author.id === id),
+    books: async () => await prisma.book.findMany(),
+    authors: async () => await prisma.author.findMany(),
+    categories: async () => await prisma.category.findMany(),
+    book: async (_: any, { id }: any) => (await prisma.book.findMany()).find(book => book.id === id),
+    category: async (_: any, { id }: any) => (await prisma.category.findMany()).find(category => category.id === id),
+    author: async (_: any, { id }: any) => (await prisma.author.findMany()).find(author => author.id === id),
   },
   Mutation: {
-    createBook: (_: any, { BookInput }: any) => {
-      const newBook = {
-        id: books.length + 1,
-        ...BookInput,
-      };
-      books.push(newBook);
+    createBook: async (_: any, { BookInput }: any) => {
+      const newBook = await prisma.book.create({
+        data: {
+          title: BookInput.title,
+          author: {
+            connect: { id: BookInput.authorId }
+          },
+          category: {
+            connect: { id: BookInput.categoryId }
+          },
+          publicationDate: BookInput.publicationDate
+        }
+      });
       return newBook;
     }
   },
   Book: {
-    author: ({ authorId }) => authors.find(author => author.id === authorId),
-    category: ({ categoryId }) => categories.find(category => category.id === categoryId),
+    author: async ({ authorId }) => {
+      return await prisma.author.findUnique({
+        where: { id: authorId },
+      });
+    },
+    category: async ({ categoryId }) => {
+      return await prisma.category.findUnique({
+        where: { id: categoryId },
+      });
+    },
   },
   Author: {
-    books: ({ id }) => books.filter(book => book.authorId === id),
+    books: async ({ id }) => (await prisma.book.findMany()).filter(book => book.authorId === id),
   },
   Category: {
-    books: ({ id }) => books.filter(book => book.categoryId === id),
+    books: async ({ id }) => (await prisma.book.findMany()).filter(book => book.categoryId === id),
   }    
 };
 
