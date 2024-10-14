@@ -12,6 +12,7 @@ const typeDefs = `#graphql
     title: String
     author: Author
     category: Category
+    publicationDate: String
   }
 
   type Author {
@@ -33,7 +34,22 @@ const typeDefs = `#graphql
     books: [Book!]!
     authors: [Author!]!
     categories: [Category!]!
+    book(id: Int!): Book
+    category(id: Int!): Category
+    author(id: Int!): Author
   }
+
+  input BookInput {
+    title: String!
+    authorId: Int!
+    categoryId: Int!
+    publicationDate: String!
+  }
+
+  type Mutation {
+    createBook(BookInput: BookInput): Book
+  }
+
 `;
 const books = [
     {
@@ -41,24 +57,28 @@ const books = [
       title: 'The Awakening',
       authorId: 1 ,
       categoryId: 1,
+      publicationDate: '1899-04-22',
     },
     {
       id: 2,
       title: 'City of Glass',
       authorId: 2,
       categoryId: 1,
+      publicationDate: '1985-03-12',
     },
     {
       id: 3,
-      title: 'The Awakening',
+      title: 'The Awakening2',
       authorId: 1,
       categoryId: 2,
+      publicationDate: '1899-04-22',
     },
     {
       id: 4,
       title: 'City of Glass2',
       authorId: 2,
       categoryId: 2,
+      publicationDate: '1985-03-12',
     }
 ];
 
@@ -89,23 +109,34 @@ const authors = [
 // Resolvers define how to fetch the types defined in your schema.
 // This resolver retrieves books from the "books" array above.
 const resolvers = {
-    Query: {
-      books: () => books,
-      authors: () => authors,
-      categories: () => categories,
-    },
-    Book: {
-      author: ({ authorId }) => authors.find(author => author.id === authorId),
-      category: ({ categoryId }) => categories.find(category => category.id === categoryId),
-    },
-    Author: {
-      books: ({ id }) => books.filter(book => book.authorId === id),
-    },
-    Category: {
-      books: ({ id }) => books.filter(book => book.categoryId === id),
-    },
-  
-      
+  Query: {
+    books: () => books,
+    authors: () => authors,
+    categories: () => categories,
+    book: (_: any, { id }: any) => books.find(book => book.id === id),
+    category:(_: any, { id }: any) => categories.find(category => category.id === id),
+    author:(_: any, { id }: any) => authors.find(author => author.id === id),
+  },
+  Mutation: {
+    createBook: (_: any, { BookInput }: any) => {
+      const newBook = {
+        id: books.length + 1,
+        ...BookInput,
+      };
+      books.push(newBook);
+      return newBook;
+    }
+  },
+  Book: {
+    author: ({ authorId }) => authors.find(author => author.id === authorId),
+    category: ({ categoryId }) => categories.find(category => category.id === categoryId),
+  },
+  Author: {
+    books: ({ id }) => books.filter(book => book.authorId === id),
+  },
+  Category: {
+    books: ({ id }) => books.filter(book => book.categoryId === id),
+  }    
 };
 
 // The ApolloServer constructor requires two parameters: your schema
