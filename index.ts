@@ -1,6 +1,7 @@
 import { ApolloServer } from '@apollo/server';
 import { startStandaloneServer } from '@apollo/server/standalone';
-import { PrismaClient } from '@prisma/client';
+import { Author, PrismaClient } from '@prisma/client';
+import DataLoader from 'dataloader';
 
 // A schema is a collection of type definitions (hence "typeDefs")
 // that together define the "shape" of queries that are executed against
@@ -12,6 +13,7 @@ const typeDefs = `#graphql
 
   # This "Book" type defines the queryable fields for every book in our data source.
   type Book {
+    id: ID!
     title: String
     author: Author
     category: Category
@@ -30,6 +32,18 @@ const typeDefs = `#graphql
     books: [Book!]!
   }
 
+
+  type Mutation {
+    createBook(BookInput: BookInput): Book
+  }
+
+  input BookInput {
+    title: String!
+    authorId: Int!
+    categoryId: Int!
+    publicationDate: String!
+  }
+
   # The "Query" type is special: it lists all of the available queries that
   # clients can execute, along with the return type for each. In this
   # case, the "books" query returns an array of zero or more Books (defined above).
@@ -42,19 +56,46 @@ const typeDefs = `#graphql
     author(id: Int!): Author
   }
 
-  input BookInput {
-    title: String!
-    authorId: Int!
-    categoryId: Int!
-    publicationDate: String!
-  }
-
-  type Mutation {
-    createBook(BookInput: BookInput): Book
-  }
-
 `;
 
+// Data Loaders
+// author by id
+const authorById = new DataLoader(async (IdsList: number[]) => {
+  const authors = await prisma.author.findMany({
+    where: { id: { in: IdsList } },
+  });
+  return IdsList.map((id) => authors.find((author) => author.id === id));
+});
+// category by id
+const categoryById = new DataLoader(async (IdsList: number[]) => {
+  const categories = await prisma.category.findMany({
+    where: { id: { in: IdsList } },
+  });
+  return IdsList.map((id) => categories.find((category) => category.id === id));
+});
+// book by id
+const bookById = new DataLoader(async (IdsList: number[]) => {
+  const books = await prisma.book.findMany({
+    where: { id: { in: IdsList } },
+  });
+  return IdsList.map((id) => books.find((book) => book.id === id));
+});
+
+// books by author id
+const booksByAuthorId = new DataLoader(async (IdsList: number[]) => {
+  const books = await prisma.book.findMany({
+    where: { authorId: { in: IdsList } },
+  });
+  return IdsList.map((id) => books.filter((book) => book.authorId === id));
+});
+
+// books by category id
+const booksByCategoryId = new DataLoader(async (IdsList: number[]) => {
+  const books = await prisma.book.findMany({
+    where: { categoryId: { in: IdsList } },
+  });
+  return IdsList.map((id) => books.filter((book) => book.categoryId === id));
+});
 // Resolvers define how to fetch the types defined in your schema.
 // This resolver retrieves books from the "books" array above.
 const resolvers = {
@@ -62,7 +103,7 @@ const resolvers = {
     books: async () => await prisma.book.findMany(),
     authors: async () => await prisma.author.findMany(),
     categories: async () => await prisma.category.findMany(),
-    book: async (_: any, { id }: any) => (await prisma.book.findMany()).find(book => book.id === id),
+    book: async (_: any, { id }: any) => bookById.load(id),
     category: async (_: any, { id }: any) => (await prisma.category.findMany()).find(category => category.id === id),
     author: async (_: any, { id }: any) => (await prisma.author.findMany()).find(author => author.id === id),
   },
@@ -84,23 +125,16 @@ const resolvers = {
     }
   },
   Book: {
-    author: async ({ authorId }) => {
-      return await prisma.author.findUnique({
-        where: { id: authorId },
-      });
-    },
-    category: async ({ categoryId }) => {
-      return await prisma.category.findUnique({
-        where: { id: categoryId },
-      });
-    },
+    author: async ({ authorId }) =>  authorById.load(authorId),
+    category: async ({ categoryId }) => categoryById.load(categoryId),
   },
   Author: {
-    books: async ({ id }) => (await prisma.book.findMany()).filter(book => book.authorId === id),
+    books: async ({ id }) => booksByAuthorId.load(id),
   },
   Category: {
-    books: async ({ id }) => (await prisma.book.findMany()).filter(book => book.categoryId === id),
-  }    
+    books: async ({ id }) =>booksByCategoryId.load(id),
+  },
+  
 };
 
 // The ApolloServer constructor requires two parameters: your schema
